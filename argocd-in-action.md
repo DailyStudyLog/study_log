@@ -1,5 +1,4 @@
-## argocd in actions 3장까지 읽던 내용
-
+## argocd in actions 3장까지 읽던 내용 3장까지 마무리
 
 GitOps 원칙과 
 
@@ -190,8 +189,88 @@ argocd만 있는 클러스터일지라도 꽤 큰 백업파일이 생성되는�
 argocd admin import - < backup-2021-09-15_18:16.yml
 ```
 
-이렇게 하면 우리가 설치햇떤 모든 상태(application, cluster, git repo)등 모든건 설치되지만 Redis cache에 있던건 복원되지 않기에 처음 몇분동안 시스템 저하를 일으키며 git repo로부터 모든 manifests를 재생성할 것이다. 이후엔 똑같이 작업이 될 것 이다.
+이렇게 하면 우리가 설치했던 모든 상태(application, cluster, git repo)등 모든건 설치되지만 Redis cache에 있던건 복원되지 않기에 처음 몇분동안 시스템 저하를 일으키며 git repo로부터 모든 manifests를 재생성할 것이다. 이후엔 똑같이 작업이 될 것 이다.
 
 재해가 발생하는건 새벽2시, 오후 2시와 상관없이 희귀하지만 우리는 자주 경험하고 복원 시나리오를 갖춰야 하기 때문에 관측에 대한 좋은 전략이 필요하다.
+
+--- 3장 마지막 읽은부분
+
+모니터링
+
+관측가능성은 매우 중요한데 이건 시스템의 상태, 성능, 행동을 답변해주기 때문이다.
+
+시나리오
+- 10개의 팀이 수천개의 모놀리식, 마이크로 서비스를 클러스터에 배포하려고 할땐 항상 예상대로 진행되지 않을 수 있다.
+	- private repo를 쓰면서 ssh키가 없거나 timeout이 걸릴만큼 큰 레포를 쓰거나 불변 변수가 바뀌려고 한다거나 사용하지않는 오래된 버전이 쓰인다거나 하는
+
+argocd는 시스템을 이해할 수 있는 많은 메트릭을 노출하기 때문에 과하게 사용되거나 사용되지 않는 리소스에 대해 행동할 수 있게 되거나 동기화에 실패, 혹은 특정 어플리케이션이 장애가 났을때 해당 개발팀에게 alert을 보낼 수 있게 도와준다.
+	- 그리고 이런 alert이 보내지면 argocd로 배포할 책임을 하나의 팀에게 주고 또 하나는 microservice를 관리하도록 하나의 팀에게 책임을 주는 2가지의 방향성으로 분할된다.
+
+이후 챕터에선 CNCF에 관리되는 Prometheus를 배포하는 방법 중 Prometheus Operator라고 불리는 operator패턴을 활용하여 모니터링을 구축하는게 있는데 이 부분은 구축하고 알고있는 부분이라 다른 챕터에서 쓰겠다.
+
+argocd component는 prometheus format으로 Metric을 노출하기 때문에 통합하기는 더 쉽다.
+	- 3개의 service가 스크랩이 되야하는데 이건 API server, repo servers, application controller이다.
+
+동기화를 시도하면 argocd 는 repo servers, 와 controller를 이용한다. 
+	- 이것들이 시스템 성능을 더 좋게하고 그것들을 관리하는데 중요한 단서가 된다.
+
+metric을 확인하며 알아낸점은 이 두 컴포넌트가 노출하는 가장 중요한 매트릭은 argocd가 노출한게 아니라 노드 os가 컨테이너가 과도하게 리소스를 점유하려고 하여 OOM을 발생시킴으로 인해 노출되는 것임을 알게되었다.
+
+이건 리소스 설정을 충분히 하지 않았는지 혹은 병렬성에 대해 너무 큰 파라미터를 전달했는지에 대한 단서가 된다.
+- repo server는 동시에 너무 많은 manifest를 생성하려고 하는 반면 application controller는 동시에 너무많은 파일을 배포하려고 한다.
+
+sum by (pod, container, namespace) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}) * on (pod,container) group_left sum by (pod,container) (changes(kube_pod_container_status_restarts_total[5m]()) >0
+
+이건 5분동안 다시 시작된게 잇는지 아니면 OOM으로 종료된게 잇는지 알아볼 수 있는 쿼리다.(prometheus)
+
+이런 알림이 발생한다면 다음과 같은 조치를 취해야 한다.
+	- resource를 늘리기
+	- 부하를 분산하기 위해 더 deployment, statefulset의 복제본 개수를 늘리기
+	- --parallelismlimit 파라미터(repo server), --kubectl-parallelism-limit(controller)를 줄이기
+
+그래서 OOM과 관련하여 시스템에서 우리가 정의받은 부하 메트릭이 어떤 상고나관계가 있는지를 우린 알아야 한다.
+
+repo server는 template 엔진을 사용해 Git repo로 부터 파일을 가져와 manifests를 생성할 책임이 있고 이건 controller로 작업이 이어지지만 동시에 수많은 요청을 했을땐 argocd_repo_pending_request_total이라는 값으로 알 수 있다.
+
+이건 얼마나 많은 요청이 Repo server로 들어왔는지에 대한것인데 짧은 기간내 요청은 상관없지만 그게 아니라면 문제가 있을 수 있어 신경써야 한다.
+
+controller측면에선 시스템 부하를 보여주는 중요한 값으로 argocd_kubectl_exec_pending이라는 Metric이 존재한다.
+이건 목적지 클러스터에 노출되어질수있도록 기다리는 apply, auth커맨드가 얼마나 많은지와 관련되어있다.
+
+이것의 최고 숫자는 --kubectl-parallelism-limit 값과 동일하다 왜냐면 병렬 쓰레드가 동시에 대상 클러스터에 명령어를 날릴 수 있기 때문이다.
+
+이것도 역시 부하가 치더라도 짧은 시간은 문제되지않지만 긴 시간이 문제가 된다.
+
+개발팀을 위한 매트릭
+- 개발팀에게 알림을 제공한다면 동기화가 제대로 이뤄지지않는 동기화 상태, 예상대로 동작하지 않는어플리케이션 안정 상태(특히 Degraded)와 같은 것들을 활용할 수 있다.
+
+동기화 상태는 UI나 커맨드에 집중하지 않도록 해도 되게끔 알림에 사용되는 유용한 지표다.
+
+도커이미지의 새로운 버전등이 적용되지않을때 받을 수 있게 하는것으로써 argocd_app_sync_total을 사용할 수 있다.
+
+5분동안 실패한 값을 찾는 뭐 command 존재
+
+
+Application health status는 동기화 상태와 차이점이 있는게 동기화와 무관하게 일어날 수 있다.
+- 3개의 statefulset중 2개는 구동되고 하는 긴 시간동안 초기화하고 있거나 중지되어 있으면 스케줄링 되지않아 Pending으로 머물 수 있고 Degraded라는 상태값에 주목한다.
+
+이런 시나리오등이 운영상황에서 일어날 수 있어 동기화 이벤트와 무관하게 발생할 수 있는데 이를 추적하는 메트릭은 argocd_app_info이다.
+
+만약 degraded라고 오면 명확한 장애 신호이므로 바로 대처해야 하고 우리는 이럴때 알림을 보내는 것도 신경써야 한다.
+
+동기화 방법
+메뉴얼
+- repo에 변경사항이 생겨도 웹 ui, cli등 Trigger가 되기전까진 진행하지않고 되면 그때서야 배포를 하게된다.
+자동
+- 대부분 사용하는 모드인데 repo에 변경사항이 푸쉬되면 자동으로 재계산해서 배포를 진행하게된다.
+
+그래서 이건 argo Cd Notification 프로젝트인데 이건 argocd를 염두해 두고 개발되었기 때문에 매우 유용할 것이다.
+
+argocd notification는 여러가지로 구축가능 
+- 이건 따로 서술
+
+argocd notification cm 은 추후 다시 알아보기
+
+
 
 추후 해당 내용 다시 수정하여 깃에 올리자.

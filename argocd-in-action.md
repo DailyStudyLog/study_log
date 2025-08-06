@@ -1,5 +1,3 @@
-## argocd in actions 3장까지 읽던 내용 3장까지 마무리
-
 GitOps 원칙과 
 
 GitOps 방식에서는 모든 변경 사항을 Pull Request(PR) 기반으로 관리하는 걸 기본 원칙으로 삼는다.
@@ -193,8 +191,6 @@ argocd admin import - < backup-2021-09-15_18:16.yml
 
 재해가 발생하는건 새벽2시, 오후 2시와 상관없이 희귀하지만 우리는 자주 경험하고 복원 시나리오를 갖춰야 하기 때문에 관측에 대한 좋은 전략이 필요하다.
 
---- 3장 마지막 읽은부분
-
 모니터링
 
 관측가능성은 매우 중요한데 이건 시스템의 상태, 성능, 행동을 답변해주기 때문이다.
@@ -219,16 +215,16 @@ metric을 확인하며 알아낸점은 이 두 컴포넌트가 노출하는 가�
 이건 리소스 설정을 충분히 하지 않았는지 혹은 병렬성에 대해 너무 큰 파라미터를 전달했는지에 대한 단서가 된다.
 - repo server는 동시에 너무 많은 manifest를 생성하려고 하는 반면 application controller는 동시에 너무많은 파일을 배포하려고 한다.
 
-sum by (pod, container, namespace) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}) * on (pod,container) group_left sum by (pod,container) (changes(kube_pod_container_status_restarts_total[5m]()) >0
+sum by (pod, container, namespace) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}) * on (pod,container) group_left sum by (pod,container) (changes(kube_pod_container_status_restarts_total[5m]()) > 0
 
-이건 5분동안 다시 시작된게 잇는지 아니면 OOM으로 종료된게 잇는지 알아볼 수 있는 쿼리다.(prometheus)
+이건 5분동안 다시 시작된게 잇는지 아니면 OOM으로 종료된 게 있는지 알아볼 수 있는 쿼리다.(prometheus)
 
 이런 알림이 발생한다면 다음과 같은 조치를 취해야 한다.
 	- resource를 늘리기
 	- 부하를 분산하기 위해 더 deployment, statefulset의 복제본 개수를 늘리기
 	- --parallelismlimit 파라미터(repo server), --kubectl-parallelism-limit(controller)를 줄이기
 
-그래서 OOM과 관련하여 시스템에서 우리가 정의받은 부하 메트릭이 어떤 상고나관계가 있는지를 우린 알아야 한다.
+그래서 OOM과 관련하여 시스템에서 우리가 정의받은 부하 메트릭이 어떤 상관관계가 있는지를 우린 알아야 한다.
 
 repo server는 template 엔진을 사용해 Git repo로 부터 파일을 가져와 manifests를 생성할 책임이 있고 이건 controller로 작업이 이어지지만 동시에 수많은 요청을 했을땐 argocd_repo_pending_request_total이라는 값으로 알 수 있다.
 
@@ -271,8 +267,88 @@ argocd notification는 여러가지로 구축가능
 
 argocd notification cm 은 추후 다시 알아보기
 
-
-
-추후 해당 내용 다시 수정하여 깃에 올리자.
-
 ### 접근제어
+
+owasp는 비영리적으로 웹 보안과관련된 많은 활동을 하는 곳이다. 그들의 가장 잘 알려진 탑텐은 애플리케이션 보안과 관련해 가장 잘 알려진 리스트이다. 여기서 계속 5년 안에 드는것이 Broken Access Control인데 이를 통해 최소 권한 원칙을 위반하지 않도록 사용자를 위한 적절한 권한 설정과 모든 사람에게 제공되는 엑세스 유형을 설정하는 것이 중요하다는것을 알 수 있다
+
+argocd가 처음 설치되면 admin user의 비밀번호는 application server pod의 이름이 되는데 이건 누구나 클러스터의 접근이 가능하면 볼 수 있었기 때문에 2.0.0 버전 이후 argocd-initial-admin-secret이라는 시크릿 리소스안에 저장되게 바뀌었다.
+
+kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+
+를 하게되면 해당 시크릿에서 패스워드를 얻어낼 수 있게 된다. 여기서 %를 지워라 왜냐면 쉘이 새로운 라인에서 시작될 수 있도록 CR/LF를 삽입하기 때문
+
+패스워드를 까먹었다면 재설정할 수 있고 bcrypt 해시가 저장된 주요 secret을 직접 변경 할 수 있따.
+
+다만 최소권한원칙을 지키기 위해선 최초 생성되는 계정을 비활성화하는것이 좋다.
+
+다만 그러려면 엑세스 등 권한을 가진 로컬 계정을 생성해야 하는데 그건 
+
+```yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+	name: argocd-cm
+data:
+	accounts.{name}: apiKey, login
+
+```
+
+과 같은식으로 로그인과 apikey발급에 대한 권한을 가진 유저를 생성할 수 있다.
+
+생성됐는지 확인하는 명령어는
+
+argocd account list로 조회가 가능하다.
+
+다만 로그인에 필요한 비밀번호를 세팅해야 하여 어드민 비밀번호를 현재 비밀번호로 사용해 세팅이 가능하다.
+
+argocd account update-password --account alina --current-password pOLpcl9ah90dViCD --new-password k8pL-xzE3WMexWm3cT8tmn 
+- 다만 이렇게 하면 shell history에 남기 때문에 남지 않는 update-password를 사용해 과정을 남게하지않는것이 안전할 수 있다.
+
+이렇게 했을때 생기는 변화를 확인하는 command와 파일은
+
+kubectl get secret argocd-secret -n argocd -o yaml
+
+```yaml
+
+apiVersion: v1
+data:
+  accounts.alina.password JDJh~
+  accounts.alina.passwordMtime: Mj~=
+  accounts.alina.toknes: bnVsbA==
+  admin.password: ~
+  admin.passwordMtime: ~
+  server.secretKey: ~
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/instance: argocd
+    app.kubernetes.io/name: argocd-secret
+    app.kubernetes.io/part-of: argocd
+  name: argocd-secret
+  namespace: argocd
+type: Opaque
+
+```
+
+여기서 유저는 로그인만 가능하고 클러스나 어플리케이션을 볼 수 있는 권한이 없는데 이걸 허용하기위한 2가지 방법이 존재한다.
+
+1. 유저에게 특정 권한을 부여하기
+2. 인증 시 특정 권한을 찾을 수 없는 경우 모든 유저에게 제공되는 기본 권한을 세팅하기 
+
+시나리오
+ 
+기본 정책을 읽기 전용으로 세팅하고 엑세스 토큰을 사용할때 특정 권한을 추가하는 방법에 대해 알아볼것이다.
+
+하단의 기술되는 ConfigMap을 통해 진행할건데 여기에 설정할 모든 RBAC rule을 정의한다.
+
+```yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+data:
+  policy.default: role:readonly
+
+```

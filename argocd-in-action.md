@@ -343,7 +343,6 @@ type: Opaque
 하단의 기술되는 ConfigMap을 통해 진행할건데 여기에 설정할 모든 RBAC rule을 정의한다.
 
 ```yaml
-
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -351,4 +350,147 @@ metadata:
 data:
   policy.default: role:readonly
 
+  policy.csv: |
+    p, role:user-update, accounts, update, *, allow
+    p, role:user-update, accounts, get, *, allow
+    g, alina, role:user-update
+
 ```
+
+> 여기서 p,g이런게 궁금하다며 ㄴ https://casbin.org/en/get-started를 가서 확인해라 
+
+
+```yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+	name: argocd-cm
+data:
+	accounts.{name}: apiKey, login
+	admin.enabled: "false" # 이렇게 설정하게되면 더 이상 초기에 설정된 관리자 계정으론 접근할 수 없고 운영환경을 준비할 수 있게 된다.
+
+```
+
+
+serviceAccount
+
+CI/CD 같은 자동화 파트에서 쓰이게 되며 엄격한 권한을 가져야 하는데 사용자에게 연결된다면 추후 사용자를 제거하거나 권한의 이슈가 생길 수 있어 사용자에게 연결하지않고 쓰는게 좋다
+
+생성
+- apiKey권한을 주고 login권한을 삭제한 로컬 계정
+- project role을 사용하고 그 역할에 토큰을 생성하는것
+
+권한을 주는 방법은 예시가 있고 그렇게 토큰을 생성하는건
+
+```sh
+
+argocd account generate-token -a gitops-ci # 이런식으로 생성
+
+# 생성된 토큰으로 유효한지 확인하는 명령어
+
+argocd account get-user-info --auth-token <token>
+
+```
+
+
+```yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: argocd
+spec:
+  roles:
+    - name: read-sync
+      description: read and sync privileges
+      policies:
+        - p, proj:argocd:read-sync, applications, get, argocd/*, allow
+        - p, proc:argocd:read-sync, applications, sync, argocd/*, allow
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  description: Project to configure argocd self-manage
+application:
+  destination:
+    - namespace: argocd
+      server: https://kubernetes.default.svc
+  sourceRepos:
+    - https://github.com/PacktPublishing/ArgoCD-in-Practice.git
+
+```
+
+이 뒤에
+
+```sh
+argocd proj role create-token argocd read-sync # 이걸로 토큰 생성이 가능하다.
+```
+
+생성하는 모든 토큰은 project role에 저장되고 만료일을 지정하거나 관리해야하는 필요성이 생긴다.
+
+이러한건 동기화밖에 하지 못하지만 그렇기 때문에 손상될경우 장애 포인트를 최소화할 수 있어 좋은거라고 생각하고 이러한 것들을 자동화 파이프라인에서 활용할 수 있다고 여긴다.
+
+### Single sign-on
+sso를 사용하면 master login을 통해 독립적인 서비스에도 인증을 할 수 있게 된다.(이 경우엔 독립적인 서비스가 해당 마스터 서비스와 통신할 수 있어야 한다.)
+
+sso를 필수로 여기는 회사가 존재하고 이를 통한다면 모든 서비스에 패스워드가 필요하지 않고 하나의 대쉬보드에서 모든 동료의 온보딩,오프보딩을 관장할 수 있게 된다.
+
+다행히 Argocd는 두가지 방법으로 구성할 수 있게 도와주는데 
+1. 기본적으로 설치되는 Dex OIDC 제공자를 사용하는 것이다.
+2. Dex 설치를 건너띄고 다른 OIDC공급자를 사용하는 경우 직접 argocd를 사용하는 것이다.
+
+argocd는 sso login을 제공하고 한번 sso를 가능하게한다면 관리자는 비활성화되고 로그인 가능한 로컬계정이 없다면 일반 로그인 폼은 사라지고 오직 SSO버튼만 남을것이다.
+
+```sh
+argocd login --sso argocd.mycompany.com # cli에서 oidc제공자를 사용해 로그인
+```
+
+
+SSO with Dex
+
+Dex는 어플리케이션이 인증을 분산할 수 있게 승인해주는 식별 시스템이다. 
+Dex는 LDAP,SAML과 같은 다른 인증 스키마를 사용할 수 있고 잘 알려진 식별 제공자(google,github)와 통신할 수 있다.
+이 이점은 Dex에 한번 연결하면 모든 연결자가 제공하는 것들의 이점을 누릴 수 있다는 것이다.
+
+우리가 SSO를 사용할때 유저는 자동으로 우리의 RBAC그룹에 추가되어질 수 있다.(argocd측에서 설정하는 어떤 개별 유저의 설정없이)
+모든것들은 sso system에 의해 통제된다.
+
+이때 구글에서 세팅한 유저정보를 가져올 순 없지만 우리 Rbac그룹에 커스텀한 정보를 세팅한걸 기반으로 유저정보를 노출할 순 잇따.
+
+{
+	"schemaName": "ArgoCDSSO",
+	"displayName": "ArgoCD_SSO_Role",
+	"fields": [
+		{
+			"fieldType": "STRING",
+			"filedName": "ArgoCDRole",
+			"displayName": "ArgoCD_Role",
+			"multiValued": true,
+			"readAccessType": "ADMINS_AND_SELF"
+		}
+	]
+}
+이러한 형태를 외부 oidc에 제공하고나면 추가 속성에서 볼 수 있다.
+
+이 뒤엔 Google Saml, RBAC groups 사이 매핑을 소개하기위한 작은 변화를 dex.config 섹션에 추가해야 한다.
+	- 이때 마지막 groupsAttr 필드가 중요하고 이게 매핑되는 이름과 일치해야만 한다.
+
+url: https://argocd.mycompany.com # google
+dex.config: |
+   connectors:
+     - type: saml
+         id: argocd-mycompany-saml-id
+         name: google
+         config:
+         ssoURL: https://accounts.google.com/o/saml2/idp?idpid=<id-provided-by-google>
+         caData: | 
+           <base64>
+         entityIssuer: argocd-mycompany-saml-id
+         redirectURI: https://argocd.mycompany.com/api/dex/callback
+         usernameAttr: name
+         emailAttir: email
+         groupsAttr: role
+
+> SSO가 없을땐 계정에 권한을 추가할때 권한을 추가하여 그 권한을 주고싶다면 연결해야 했는데 SSO는 그러지않아도 자동으로 그룹에 추가된다.
+
+

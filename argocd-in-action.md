@@ -255,7 +255,9 @@ Application health status는 동기화 상태와 차이점이 있는게 동기�
 만약 degraded라고 오면 명확한 장애 신호이므로 바로 대처해야 하고 우리는 이럴때 알림을 보내는 것도 신경써야 한다.
 
 동기화 방법
+
 메뉴얼
+
 - repo에 변경사항이 생겨도 웹 ui, cli등 Trigger가 되기전까진 진행하지않고 되면 그때서야 배포를 하게된다.
 자동
 - 대부분 사용하는 모드인데 repo에 변경사항이 푸쉬되면 자동으로 재계산해서 배포를 진행하게된다.
@@ -277,7 +279,7 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.pas
 
 를 하게되면 해당 시크릿에서 패스워드를 얻어낼 수 있게 된다. 여기서 %를 지워라 왜냐면 쉘이 새로운 라인에서 시작될 수 있도록 CR/LF를 삽입하기 때문
 
-패스워드를 까먹었다면 재설정할 수 있고 bcrypt 해시가 저장된 주요 secret을 직접 변경 할 수 있따.
+패스워드를 까먹었다면 재설정할 수 있고 bcrypt 해시가 저장된 주요 secret을 직접 변경 할 수 있다.
 
 다만 최소권한원칙을 지키기 위해선 최초 생성되는 계정을 비활성화하는것이 좋다.
 
@@ -357,7 +359,7 @@ data:
 
 ```
 
-> 여기서 p,g이런게 궁금하다며 ㄴ https://casbin.org/en/get-started를 가서 확인해라 
+> 여기서 p,g이런게 궁금하다면 https://casbin.org/en/get-started를 가서 확인해라 
 
 
 ```yaml
@@ -423,7 +425,9 @@ application:
 이 뒤에
 
 ```sh
+
 argocd proj role create-token argocd read-sync # 이걸로 토큰 생성이 가능하다.
+
 ```
 
 생성하는 모든 토큰은 project role에 저장되고 만료일을 지정하거나 관리해야하는 필요성이 생긴다.
@@ -442,7 +446,9 @@ sso를 필수로 여기는 회사가 존재하고 이를 통한다면 모든 서
 argocd는 sso login을 제공하고 한번 sso를 가능하게한다면 관리자는 비활성화되고 로그인 가능한 로컬계정이 없다면 일반 로그인 폼은 사라지고 오직 SSO버튼만 남을것이다.
 
 ```sh
+
 argocd login --sso argocd.mycompany.com # cli에서 oidc제공자를 사용해 로그인
+
 ```
 
 
@@ -455,7 +461,7 @@ Dex는 LDAP,SAML과 같은 다른 인증 스키마를 사용할 수 있고 잘 �
 우리가 SSO를 사용할때 유저는 자동으로 우리의 RBAC그룹에 추가되어질 수 있다.(argocd측에서 설정하는 어떤 개별 유저의 설정없이)
 모든것들은 sso system에 의해 통제된다.
 
-이때 구글에서 세팅한 유저정보를 가져올 순 없지만 우리 Rbac그룹에 커스텀한 정보를 세팅한걸 기반으로 유저정보를 노출할 순 잇따.
+이때 구글에서 세팅한 유저정보를 가져올 순 없지만 우리 Rbac그룹에 커스텀한 정보를 세팅한걸 기반으로 유저정보를 노출할 순 있다.
 
 {
 	"schemaName": "ArgoCDSSO",
@@ -470,12 +476,14 @@ Dex는 LDAP,SAML과 같은 다른 인증 스키마를 사용할 수 있고 잘 �
 		}
 	]
 }
+
 이러한 형태를 외부 oidc에 제공하고나면 추가 속성에서 볼 수 있다.
 
 이 뒤엔 Google Saml, RBAC groups 사이 매핑을 소개하기위한 작은 변화를 dex.config 섹션에 추가해야 한다.
 	- 이때 마지막 groupsAttr 필드가 중요하고 이게 매핑되는 이름과 일치해야만 한다.
 
 url: https://argocd.mycompany.com # google
+
 dex.config: |
    connectors:
      - type: saml
@@ -493,4 +501,57 @@ dex.config: |
 
 > SSO가 없을땐 계정에 권한을 추가할때 권한을 추가하여 그 권한을 주고싶다면 연결해야 했는데 SSO는 그러지않아도 자동으로 그룹에 추가된다.
 
+엔지니어의 작업에 따라 개발자, sre로 구분할 수 있고 각 역할에 따라 더 세부적인 역할이 나뉠 수 있다.
 
+argocd가 설치되면 Read-Only권한, Full-Access권한을 가진 2개의 Rbac이 세팅된다.
+
+
+개발자에겐 readonly를 가진 역할을 세팅하고 동기화같은 추가 역할을 세팅해줄 수 있고 sre는 이 역할을 상속하고 그 외 추가적인 역할을 세팅할 수 있는데 그런 설정은 하단과 같이 세팅된다.
+
+
+```yaml
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+data: 
+  policy.csv: |
+    g, role:developer, role:readonly
+    p, role:developer, applications, sync, */*, allow
+
+    g, role:sre, role:developer
+
+    p, role:sre, applications, create, */*, allow
+    p, role:sre, applications, update, */*, allow
+    p, role:sre, applications, overried, */*, allow
+    p, role:sre, applications, actions, */*, allow
+    p, role:sre, projects, create, *, allow
+    p, role:sre, projects, update, *, allow
+    p, role:sre, repositories, create, *, allow
+    p, role:sre, repositories, update, *, allow
+
+    g, Sre, role:sre
+    g, Developer, role:developer
+    g, Onboarding, role:readonly
+ 
+```
+
+이건 argocd의 접근제어를 정의하는 첫 시작으로 괜찮지만 시간에 따라선 변경이 필요할것이다.
+
+Argocd와 함께(Dex를 제외하고) sso를 설치하는것들중엔 다음과 같은것들도 있다.
+- OKTA
+- OneLogin
+- OpenUnison
+- Keycloak
+
+또한 argocd와 외부 SSO를 통합해 쓸때 ConfigMap의 민감 데이터를 Secret에 넣고 참조하게 하는것이 좋은데
+이것은 k8s에선 지원하지 않지만 argocd에선 문법을 이해하고 참조할 수 있다
+
+그 외 ExternalSecret 프로젝트는 더 많은 이점을 제공하는데 다양한 데이터 저장소 예론 Aws Parameter Store, Azure Key Vault, Google Cloud Secrets Manager, Hashicorp Vault등을 지원하여 이게 인프라에 더 적합할 수 있다.
+
+우리가 OIDC를 사용해 argocd를 직접 사용하거나 SSO를 안쓴다면 DEX 서버를 지우는것이 우리에게 실용적일 것이다.
+
+방법으로는
+1. replicas = 0
+2. 배포를 완전히 없애기 위해 kustomize, helm등을 활용할 수 있다.

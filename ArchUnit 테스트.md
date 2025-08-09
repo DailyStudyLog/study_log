@@ -74,7 +74,8 @@ ArchUnit Test에 대해 알아보고 적용해보자.
 
 2.3  2.2와 같은 맥락으로 컨트롤러 테스트
 
-<img width="549" height="329" alt="image" src="https://github.com/user-attachments/assets/e9f534f5-0213-493a-90a0-ec22dc38f1b9" />
+<img width="554" height="476" alt="image" src="https://github.com/user-attachments/assets/55d9478f-703e-4c1b-a1ad-047a15ddcc50" />
+
 
 <br />
 
@@ -105,7 +106,8 @@ ArchUnit Test에 대해 알아보고 적용해보자.
 
 2.4 리포지토리 테스트
 
-<img width="280" height="127" alt="image" src="https://github.com/user-attachments/assets/16332d80-84b2-45c5-9331-61fd377c4a0e" />
+<img width="532" height="597" alt="image" src="https://github.com/user-attachments/assets/2f1e1522-ea37-4d24-9c7b-94837dcd3c71" />
+
 
 <br />
 

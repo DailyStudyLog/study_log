@@ -566,3 +566,86 @@ diff -r out-default-branch out || true
 ```
 
 이런식으로의 파이프라인을 빠르게 도입한다면 yaml 유효성을 검증하여 오류를 잡아내고 유효성을 검증하게되는 이점을 얻을 수 있을 것이다.
+
+`kusotmize`
+argocd는 초기엔 kustomize만 지원했으나 이후 helm chart가 생겨났다. 
+helm version2랑 비교하여 꽤 큰 이점을 가진 kustomize로 여전히 배포하고 있는 사람들이 많지만 helm version 3부턴 더 이상 그렇지는 않다.
+
+argocd가 git repo를 관측하고 kustomization.yml을 발견한 순간 kustomize라는것을 인지한다.
+만약 그 파일이 존재한다면 kustomize build를 이용해 파일이 생성될 것이다.
+
+k8s엔 yaml파일이 많고 pr을 올리기 전 그것들을 검증하는것이 좋은 방법일 수 있기 때문에 시작하는 첫번째는 yaml을 검사하는 것이다.
+
+`yamllint`
+yaml의 구조가 갖춰져 있다면 다른 문제를 발견할 수 없지만 들여쓰기 등 문법에 대해 검사해주는 것으로써 사용이 가능하다.
+
+`chart-testing project`
+helm chart의 유효성을 검증하며 클러스터가 없어도 라이브로 테스트를 수행하고 설치하는등 실제 설치 없이 빠른 피드백을 줌으로써 문법 검사를 실시할 수 있따.
+
+ct lint라는 명령으로 정적 검사를 진행하며 이것은 helm lint와 다른 많은 명령을 수행한다.
+
+이것은 사용자가 정의한 많은 values.yml을 지원하고 yaml파일에 다양한 입력을 기반으로 다른 로직의 테스트가 쉽게 가능하다.
+
+다른 이점으론 yamllint와 yamale이란 툴이 내장되어있어 한번만 시행해도 문법검사가 대부분 가능하다.
+
+k8s에선
+kubeconform으로 api 유효성 검사를 진행하고 kube-linter론 잘 진행되는지를 configtest를 살펴볼것이다.
+
+#### kubeval
+이것은 테스트를 위해 개발됐지만 최근엔 더 이상 개발되고있지않다. kubeconform을 발전시킨것처럼 보인다.
+
+#### kube-score , kube-lint
+kube-score가 더 먼저 나왔지만 kube-lint가 더 github star가 많고 이것들은 manifests를 생성한느 과정을 스캔하는것을 더 쉽게 만들어준다.
+
+kube-score는 critical , warning 카테고리 범주의 것들을 찾고 해당 범주의 이슈를 발견하면 1 종료코드를 반환한다.
+
+
+Open Policy Agent 
+conftest 
+
+#### GitOps Engine
+gitops의 핵심 특징 5가지
+- 캐쉬
+- 비교하고 계산하기 - Diffing and reconciliation
+- 상태 체크 - Health assessment
+- 동기화 
+- 엔진
+
+argocd는 위 특징을 모두 구현했으며 이 뿐만 아니라 gitops를 서비스로 제공하여 gitops의 부분이 아니라 큰 enterprise로 제공된다.
+
+- SSO 통합
+- Role-Based access control
+- Applcation, Project와 같은 Custom resource definition 추상화
+
+이러한 모든 특징을 gitops 엔진과 갖췄을때 gitops를 엔지니어링 팀이 더 쉽게 적용하도록 가능하게 해준다.
+
+#### Gitops Agent
+
+- argo team은 gitops Engine에 기초해 gitops 엔진 패키지를 수단으로하는 GitOps Operator를 만들었다.
+
+- gitops agent의 메인 idea는 gitops 엔진의 라이브러리를 재사용할 수 있게 하고 다른 특징을 기여하고 argo team에 피드백을 공유할 수 있게 해준다.
+
+이러한 에이전트를 2가지 모드로 활용 가능하다.
+namespaced - 설치된 네임스페이스에서 리소스를 관리하는것
+full cluster - 배포된 클러스터 전역에서 관리하는것
+
+#### kuberentes-sigs/cli-utils
+
+argo team과 kubernetes SIG는 kubectl과 같은 주제로 구성되어져 있고 cli 프레임워크와 의존성의 표준에 초점을 맞추고 있다.
+
+sig group은 kubectl을 위한 추상화된 레이어를 생성하기 위해  cli-utils라고 불리는 go 라이브러리를 개발했다.
+그리고 이것은 gitops controller를 사용한 server-side use를 사용하는것을 향상시킨다. 
+이것의 핵심 특징은 하단과 같다.
+- pruning
+- Status interpretation
+- Status lookup
+- Diff and preview
+- Waiting for reconciliation
+- Resource ordering
+- Explicit dependency ordering
+- implicit dependency ordering
+- Applying time mutation
+
+#### kapply usage
+
+kubernetes Sig team은 cli-utils를 위해 kapply라고 불리는 cli를 개발했따. 이것은 운영환경을 위한것은 아니지만 특징을 이해하기 위한 기회를 제공해주며 라이브러리들의 활용성을 증가시킬 수 있다.

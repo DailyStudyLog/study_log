@@ -97,3 +97,52 @@ resource "aws_s3_bucket" "s3" {
 		Name = "iac-terraform-s3-test"
 	}
 }  
+
+### terraform 실무
+
+
+Terraform Backend
+
+Terraform "Backend" 는 Terraform의 state file을 어디에 저장을 하고, 가져올지에 대한 설정입니다. 기본적으로는 로컬 스토리지에 저장을 하지만, 설정에 따라서 s3, consul, etcd 등 다양한 "Backend type"을 사용할 수 있습니다.
+
+Terraform Backend를 사용하는 이유?
+
+- Locking
+	- 보통 Terraform 코드를 혼자 작성하지는 않습니다. 인프라를 변경한다는 것은 굉장히 민감한 작업이 될 수 있습니다.
+	- 원격 저장소를 사용함으로써 동시에 같은 state를 접근하는 것을 막아 많은 변경을 방지할 수 있습니다.
+- Backup
+	- 로컬 스토리지에 저장한다는건 유실할 수 있다는 가능성을 내포합니다.
+	- S3와 같은 원격저장소를 사용함으로써 state 파일의 유실을 방지합니다.
+
+### Variable
+
+Terraform은 HCL문법을 가진 언어
+
+언어적 특성을 가지고 있어 변수를 정의하고, 주입해서 사용할 수 있습니다.
+
+HCL syntax는 json syntax랑 비슷
+
+
+변수 정의 방법
+
+variable "이름" {
+	type = <type 예시 = string, list 등등>
+	default = <기본값 정의>
+}
+
+#### terraform.tfvars
+
+정의한 변수에 값을 주입하기 위해 일반적인 방법은 terraform.tfvars 파일을 생성하는 것입니다.
+Variable = value 형태로 정의합니다.
+
+> 추가적으론 모듈이나 stdin의 형태로 사용자의 입력을 받아 저장할 수 있습니다.
+
+### terraform functions
+
+- Terraform은 다양한 함수를 내장하고 있고 사용자는 이 함수를 사용해 리소스를 보다 효율적으로 생성할 수 있고, 간략하게 코드를 만들 수 있습니다.
+	- 현재는 built-in 함수만 지원하고 있습니다.
+
+	
+
+
+

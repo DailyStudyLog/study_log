@@ -42,3 +42,33 @@ az의 개수를 선택하는건 service의 크기, 성격별로 정하는게 나
 Subnet을 나누는 기준은 용도별이 아니라 Routing Table 분할할때 사용하는 것이다.
 
 Route table 에 따라서 서브넷을 종속시키고, 구분시켜야 한다.
+
+
+### vpc endpoint
+
+vpc endpoint는 다른 aws 서비스를 사용할 때 aws 내부망을 사용하여 내부 통신을 하고자 할 때 사용
+vpc endpoint를 사용하면 인터넷을 타고 나가지 않기 때문에 외부로부터 통신을 안전하게 보호할 수 있고, 내부망을 타기 때문에 속도가 향상될 수 있음
+
+
+#### gateway형 endpoint
+- 인터넷으로 API통신을 하는 s3와 dynamodb는 gateway형으로 endpoint가 생성됩니다.
+- gateway형 Endpoint는 따로 보안그룹을 생성할 필요가 없습니다.
+- 추가적으로 과금될 일은 없음
+
+#### interface형 endpoint
+- 기타 서비스들은 Interface형으로 Endpoint를 생성할 수 있습니다.
+- Interface형 Endpoint는 별도로 보안그룹이 필요합니다.
+- 보안그룹은 기본적으론 443포트 인바운드를 허용
+- 서비스를 사용하는 시간당 * 네트워크를 사용하는 데이터의 양마다 과금
+
+### VPC peering
+
+- vpc 간 내부 통신을 위해선 Peering을 맺어야 한다.
+- 주의해야할 점은 peering하는 두 VPC의 CIDR가 겹치지 않아야 한다.
+- VPC Peering을 맺기 위해선 Requester는 Peering 요청을 하고, Acceptor는 요청을 승인해야 한다.
+- 이후엔 해당 peering ID를 destination IP range와 Route 테이블에 저장한다.
+	- Requester: artp VPC
+	- Acceptor: artd VPC
+- 같은 region의 az라면 peering은 과금되지 않음
+
+> Requester는 Peering을 가장 많이 맺는 VPC로 지정하면 편하다.
